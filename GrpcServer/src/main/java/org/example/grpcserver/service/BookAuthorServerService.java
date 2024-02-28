@@ -9,6 +9,8 @@ import org.example.grpcserver.proto.BookAuthorServiceGrpc;
 import org.example.grpcserver.proto.Models.*;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.util.List;
+
 
 @GrpcService
 public class BookAuthorServerService extends BookAuthorServiceGrpc.BookAuthorServiceImplBase {
@@ -27,6 +29,7 @@ public class BookAuthorServerService extends BookAuthorServiceGrpc.BookAuthorSer
         responseObserver.onNext(result);
         responseObserver.onCompleted();
     }
+
     @Override
     public void getAuthorsByBookId(BookIdRequest request, StreamObserver<AuthorListResponse> responseObserver) {
         val result = tmpDb.getAuthorsByBookId(request.getBookId());
@@ -35,24 +38,54 @@ public class BookAuthorServerService extends BookAuthorServiceGrpc.BookAuthorSer
     }
 
     @Override
-    public void getBookListOfAuthorByAuthorId(AuthorIdRequest request, StreamObserver<BookListResponse> responseObserver) {
-        val result = tmpDb.getBookListOfAuthorByAuthorId(request.getAuthorId());
-        responseObserver.onNext(BookListResponse.newBuilder().addAllBooks(result).build());
+    public void getBookListOfAuthorByAuthorId(AuthorIdRequest request, StreamObserver<Book> responseObserver) {
+        List<Book> books = tmpDb.getBookListOfAuthorByAuthorId(request.getAuthorId());
+        for (Book book : books) {
+            responseObserver.onNext(book);
+        }
+        responseObserver.onCompleted();
+    }
+
+
+    @Override
+    public void getAuthorToBooksMapSnapshot(Empty request, StreamObserver<AuthorBookListMapResponse> responseObserver) {
+        val result = tmpDb.getAuthorToBooksMapSnapshot().entrySet().stream().map(authorListEntry -> AuthorBookPair.newBuilder().setAuthor(authorListEntry.getKey()).addAllBook(authorListEntry.getValue()).build()).toList();
+        responseObserver.onNext(AuthorBookListMapResponse.newBuilder().addAllPairList(result).build());
         responseObserver.onCompleted();
     }
 
     @Override
-    public void getAuthorToBooksMapSnapshot(Empty request, StreamObserver<AuthorBookListMapResponse> responseObserver) {
-        val result=  tmpDb.getAuthorToBooksMapSnapshot()
-                .entrySet()
-                .stream()
-                        .map(authorListEntry ->
-                                AuthorBookPair.newBuilder()
-                                        .setAuthor(authorListEntry.getKey())
-                                        .addAllBook(authorListEntry.getValue())
-                                        .build()
-                        ).toList();
-        responseObserver.onNext(AuthorBookListMapResponse.newBuilder().addAllPairList(result).build());
-        responseObserver.onCompleted();
+    public StreamObserver<BookIdRequest> getMostAttendeeAuthorsForBook(StreamObserver<Book> responseObserver) {
+        return new StreamObserver<>() {
+            int mostAttendee = 0;
+             Book resultBook;
+
+            @Override
+            public void onNext(BookIdRequest bookIdRequest) {
+                List<Book> bookList = tmpDb.getBookList();
+                for (final Book currentBook : bookList) {
+                    if (currentBook.getAuthorListList().size() >= mostAttendee) {
+                        mostAttendee = currentBook.getAuthorListList().size();
+                        resultBook = currentBook;
+
+                    }
+                }
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                responseObserver.onError(throwable);
+            }
+
+            @Override
+            public void onCompleted() {
+                responseObserver.onNext(resultBook);
+                responseObserver.onCompleted();
+            }
+        };
+
+
     }
+
+
 }

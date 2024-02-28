@@ -1,10 +1,12 @@
 package org.example.grpcserver.db;
+import lombok.Getter;
 import lombok.val;
 import org.example.grpcserver.proto.Models.*;
 
 import java.util.*;
 public class TempDb {
 
+    @Getter
     private final List<Book> bookList;
     private final List<Author> authorList;
     private final Random rand = new Random();

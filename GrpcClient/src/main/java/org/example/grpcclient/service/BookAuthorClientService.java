@@ -2,12 +2,16 @@ package org.example.grpcclient.service;
 
 
 import com.google.protobuf.Empty;
+import io.grpc.stub.StreamObserver;
 import lombok.val;
 import net.devh.boot.grpc.client.inject.GrpcClient;
 import org.example.grpcserver.proto.BookAuthorServiceGrpc;
+import org.example.grpcserver.proto.Models;
 import org.example.grpcserver.proto.Models.*;
 import org.springframework.stereotype.Service;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 
@@ -16,6 +20,9 @@ public class BookAuthorClientService {
 
     @GrpcClient("grpcServer")
     BookAuthorServiceGrpc.BookAuthorServiceBlockingStub synchronousClient;
+
+    @GrpcClient("grpcServer")
+    BookAuthorServiceGrpc.BookAuthorServiceStub asynchronousClient;
 
     public Author getAuthorByAuthorId(int authorId) {
         val authorRequestModel = AuthorIdRequest.newBuilder().setAuthorId(authorId).build();
@@ -27,10 +34,74 @@ public class BookAuthorClientService {
         return synchronousClient.getAuthorsByBookId(bookRequestModel).getAuthorsList();
     }
 
+    //can use CountDownLatch too
+    volatile boolean isLock = true;
     public List<Book> getBookListOfAuthorByAuthorId(int authorId) {
         val authorRequestModel = AuthorIdRequest.newBuilder().setAuthorId(authorId).build();
-        return synchronousClient.getBookListOfAuthorByAuthorId(authorRequestModel).getBooksList();
+        val resultList = new ArrayList<Book>();
 
+        asynchronousClient.getBookListOfAuthorByAuthorId(authorRequestModel, new StreamObserver<>() {
+            @Override
+            public void onNext(Book book) {
+                resultList.add(book);
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                isLock = false;
+            }
+
+            @Override
+            public void onCompleted() {
+                isLock = false;
+            }
+        });
+        while (isLock) {
+            Thread.onSpinWait();
+        }
+
+        return resultList;
+    }
+
+    boolean isLock2 = true;
+    public Book getMostAttendeeBook() throws InterruptedException {
+        final Book[] resultBook = new Book[1];
+        val countDownLatch= new CountDownLatch(1);
+        val responseObserver = asynchronousClient.getMostAttendeeAuthorsForBook(new StreamObserver<>() {
+            @Override
+            public void onNext(Book book) {
+                resultBook[0] = book;
+                isLock2 = false;
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                isLock2 = false;
+                countDownLatch.countDown();
+            }
+
+            @Override
+            public void onCompleted() {
+                isLock2 = false;
+                countDownLatch.countDown();
+            }
+        });
+
+        val result= getLibrarySnapShot().values().stream()
+                .flatMap(List::stream)
+                .distinct()
+                .map(book -> BookIdRequest.newBuilder().setBookId(book.getBookId()).build()).toList();
+        for (BookIdRequest bookIdRequest : result) {
+            responseObserver.onNext(bookIdRequest);
+        }
+
+        responseObserver.onCompleted();
+        while (isLock2) {
+            Thread.onSpinWait();
+        }
+//        boolean await= countDownLatch.await(1, TimeUnit.MINUTES);
+//        return await ? resultBook[0] : null;
+        return resultBook[0];
     }
 
     public Map<Author, List<Book>> getLibrarySnapShot() {
