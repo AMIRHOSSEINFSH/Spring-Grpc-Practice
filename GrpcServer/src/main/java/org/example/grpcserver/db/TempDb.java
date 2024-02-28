@@ -1,9 +1,11 @@
 package org.example.grpcserver.db;
+
 import lombok.Getter;
 import lombok.val;
 import org.example.grpcserver.proto.Models.*;
 
 import java.util.*;
+
 public class TempDb {
 
     @Getter
@@ -15,19 +17,29 @@ public class TempDb {
         ArrayList<Book> tmpBookList = new ArrayList<>();
         ArrayList<Author> tmpAuthorList = new ArrayList<>();
         for (int i = 1; i <= 10; i++) {
-            var author = Author.newBuilder()
-                    .setAuthorId(i)
-                    .build();
-            tmpAuthorList.add(author);
+            tmpAuthorList.add(Author.newBuilder().setAuthorId(i).build());
+            /*var author = Author.newBuilder().setAuthorId(i).build();
+            tmpAuthorList.add(author);*/
         }
         for (int i = 1; i <= 10; i++) {
-            val authorList = generateRandomAuthorListData(tmpAuthorList);
-            val bookBuilder = Book.newBuilder()
-                    .setBookId(i * 10);
+            List<Author> authorList = generateRandomAuthorListData(tmpAuthorList);
+            if (authorList == null) authorList = Collections.emptyList();
+            int bookId = i * 10;
+            val bookBuilder = Book.newBuilder().setBookId(bookId);
 
             bookBuilder.addAllAuthorList(authorList);
 
-            tmpBookList.add(bookBuilder.build());
+            Book book = bookBuilder.build();
+
+            /*for (Author value : authorList) {
+                val authorId = value.getAuthorId();
+                tmpAuthorList.stream().filter(author2 -> author2.getAuthorId() == authorId).findFirst()
+                        .ifPresent(author -> tmpAuthorList.set(tmpAuthorList.indexOf(author), author.toBuilder().addBooks(book).build()));
+
+            }*/
+
+
+            tmpBookList.add(book);
         }
         bookList = tmpBookList;
         authorList = tmpAuthorList;
@@ -37,7 +49,7 @@ public class TempDb {
         Set<Integer> authorIdList = new HashSet<>();
         if (authorList.isEmpty()) return null;
 
-        for (int j = 0; j < rand.nextInt(1, 2); j++) {
+        for (int j = 0; j < rand.nextInt(1, 3); j++) {
             val authorId = authorList.get(rand.nextInt(0, authorList.size() - 1)).getAuthorId();
             authorIdList.add(authorId);
         }

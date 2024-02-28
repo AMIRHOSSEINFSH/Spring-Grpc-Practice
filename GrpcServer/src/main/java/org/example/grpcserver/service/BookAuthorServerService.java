@@ -9,6 +9,7 @@ import org.example.grpcserver.proto.BookAuthorServiceGrpc;
 import org.example.grpcserver.proto.Models.*;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.util.ArrayList;
 import java.util.List;
 
 
@@ -87,5 +88,40 @@ public class BookAuthorServerService extends BookAuthorServiceGrpc.BookAuthorSer
 
     }
 
+    @Override
+    public StreamObserver<BookIdRequest> getBooksWithSameAuthor(StreamObserver<AuthorBookPair> responseObserver) {
+        return new StreamObserver<>() {
+            final List<AuthorBookPair> responsePairList = new ArrayList<>();
+            @Override
+            public void onNext(BookIdRequest bookIdRequest) {
+                val authorList= tmpDb.getBookList()
+                        .stream()
+                        .filter(book -> book.getBookId() == bookIdRequest.getBookId())
+                        .findFirst()
+                        .orElse(Book.getDefaultInstance())
+                        .getAuthorListList();
 
+                for (final Author currentAuthor : authorList) {
+                    val bookList = tmpDb.getAuthorToBooksMapSnapshot().get(currentAuthor)
+                            .stream()
+                            .filter(book -> book.getBookId() != bookIdRequest.getBookId()).toList();
+                    if (!bookList.isEmpty()) {
+                        val responseModel = AuthorBookPair.newBuilder().setAuthor(currentAuthor).addAllBook(bookList).build();
+                        responsePairList.add(responseModel);
+                    }
+                }
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                responseObserver.onError(throwable);
+            }
+
+            @Override
+            public void onCompleted() {
+                responsePairList.forEach(responseObserver::onNext);
+                responseObserver.onCompleted();
+            }
+        };
+    }
 }

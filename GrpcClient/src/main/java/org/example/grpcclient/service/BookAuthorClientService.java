@@ -6,12 +6,11 @@ import io.grpc.stub.StreamObserver;
 import lombok.val;
 import net.devh.boot.grpc.client.inject.GrpcClient;
 import org.example.grpcserver.proto.BookAuthorServiceGrpc;
-import org.example.grpcserver.proto.Models;
 import org.example.grpcserver.proto.Models.*;
 import org.springframework.stereotype.Service;
+
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 
@@ -36,6 +35,7 @@ public class BookAuthorClientService {
 
     //can use CountDownLatch too
     volatile boolean isLock = true;
+
     public List<Book> getBookListOfAuthorByAuthorId(int authorId) {
         val authorRequestModel = AuthorIdRequest.newBuilder().setAuthorId(authorId).build();
         val resultList = new ArrayList<Book>();
@@ -63,10 +63,11 @@ public class BookAuthorClientService {
         return resultList;
     }
 
-    boolean isLock2 = true;
+    volatile boolean isLock2 = true;
+
     public Book getMostAttendeeBook() throws InterruptedException {
         final Book[] resultBook = new Book[1];
-        val countDownLatch= new CountDownLatch(1);
+        val countDownLatch = new CountDownLatch(1);
         val responseObserver = asynchronousClient.getMostAttendeeAuthorsForBook(new StreamObserver<>() {
             @Override
             public void onNext(Book book) {
@@ -87,7 +88,7 @@ public class BookAuthorClientService {
             }
         });
 
-        val result= getLibrarySnapShot().values().stream()
+        val result = getLibrarySnapShot().values().stream()
                 .flatMap(List::stream)
                 .distinct()
                 .map(book -> BookIdRequest.newBuilder().setBookId(book.getBookId()).build()).toList();
@@ -104,9 +105,45 @@ public class BookAuthorClientService {
         return resultBook[0];
     }
 
+    private volatile boolean isLock3= true ;
+    public List<AuthorBookPair> getAuthorBookPairListByIds(List<Integer> bookIds) {
+        List<AuthorBookPair> resultList = new ArrayList<>();
+
+        val serverObserver = asynchronousClient.getBooksWithSameAuthor(
+                new StreamObserver<>() {
+                    @Override
+                    public void onNext(AuthorBookPair authorBookPair) {
+                        resultList.add(authorBookPair);
+                    }
+
+                    @Override
+                    public void onError(Throwable throwable) {
+                        isLock3 = false;
+                    }
+
+                    @Override
+                    public void onCompleted() {
+                        isLock3 = false;
+                    }
+                }
+        );
+
+        val data =bookIds.stream()
+                .map(itId -> BookIdRequest.newBuilder().setBookId(itId).build())
+                .toList();
+        data.forEach(serverObserver::onNext);
+        serverObserver.onCompleted();
+
+        while (isLock3) {Thread.onSpinWait();}
+
+        return resultList;
+    }
+
+
     public Map<Author, List<Book>> getLibrarySnapShot() {
         val data = synchronousClient.getAuthorToBooksMapSnapshot(Empty.newBuilder().build());
         return data.getPairListList().stream().collect(Collectors.toMap(AuthorBookPair::getAuthor, AuthorBookPair::getBookList));
     }
+
 
 }

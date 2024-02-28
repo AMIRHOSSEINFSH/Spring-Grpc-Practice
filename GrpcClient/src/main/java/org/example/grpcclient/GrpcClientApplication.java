@@ -6,6 +6,9 @@ import org.example.grpcserver.proto.Models;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+import java.util.*;
+import java.util.stream.Collectors;
+
 @SpringBootApplication
 public class GrpcClientApplication {
 
@@ -16,12 +19,20 @@ public class GrpcClientApplication {
 
         //TODO now you can call function on bookAuthorClientService instance
 //        val result = bookAuthorClientService.getBookListOfAuthorByAuthorId(4);
-        Models.Book result = null;
-        try {
-            result = bookAuthorClientService.getMostAttendeeBook();
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        List<Models.AuthorBookPair> result;
+        val bookList = bookAuthorClientService.getLibrarySnapShot()
+                .values()
+                .stream().flatMap(List::stream)
+                .collect(Collectors.toSet())
+                .stream()
+                .toList();
+
+        val requestedIds = Set.of(
+                bookList.get((new Random()).nextInt(0, bookList.size() - 1)).getBookId(),
+                bookList.get((new Random()).nextInt(0, bookList.size() - 1)).getBookId()
+        );
+
+        result = bookAuthorClientService.getAuthorBookPairListByIds(requestedIds.stream().toList());
         System.out.println(result);
     }
 
