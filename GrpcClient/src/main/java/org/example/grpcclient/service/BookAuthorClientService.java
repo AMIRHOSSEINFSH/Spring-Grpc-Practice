@@ -5,13 +5,15 @@ import com.google.protobuf.Empty;
 import io.grpc.stub.StreamObserver;
 import lombok.val;
 import net.devh.boot.grpc.client.inject.GrpcClient;
+import org.example.grpcclient.utils.GrpcException;
 import org.example.grpcserver.proto.BookAuthorServiceGrpc;
 import org.example.grpcserver.proto.Models.*;
 import org.springframework.stereotype.Service;
-
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
+import static org.example.grpcclient.utils.Const.GPRC_TIME_OUT;
+import static org.example.grpcclient.utils.Const.GPRC_TIME_OUT_UTIL;
 
 
 @Service
@@ -33,10 +35,8 @@ public class BookAuthorClientService {
         return synchronousClient.getAuthorsByBookId(bookRequestModel).getAuthorsList();
     }
 
-    //can use CountDownLatch too
-    volatile boolean isLock = true;
-
-    public List<Book> getBookListOfAuthorByAuthorId(int authorId) {
+    public List<Book> getBookListOfAuthorByAuthorId(int authorId) throws InterruptedException, GrpcException {
+        val latch = new CountDownLatch(1);
         val authorRequestModel = AuthorIdRequest.newBuilder().setAuthorId(authorId).build();
         val resultList = new ArrayList<Book>();
 
@@ -48,43 +48,39 @@ public class BookAuthorClientService {
 
             @Override
             public void onError(Throwable throwable) {
-                isLock = false;
+                latch.countDown();
             }
 
             @Override
             public void onCompleted() {
-                isLock = false;
+                latch.countDown();
             }
         });
-        while (isLock) {
-            Thread.onSpinWait();
-        }
+        val isReach= latch.await(GPRC_TIME_OUT, GPRC_TIME_OUT_UTIL);
+        //time out reached and server did not send any data
+        if (!isReach) throw new GrpcException("Grpc TimeOut Reached",null);
 
         return resultList;
     }
 
-    volatile boolean isLock2 = true;
-
-    public Book getMostAttendeeBook() throws InterruptedException {
+    public Book getMostAttendeeBook() throws InterruptedException, GrpcException {
         final Book[] resultBook = new Book[1];
-        val countDownLatch = new CountDownLatch(1);
+        val latch = new CountDownLatch(1);
         val responseObserver = asynchronousClient.getMostAttendeeAuthorsForBook(new StreamObserver<>() {
             @Override
             public void onNext(Book book) {
                 resultBook[0] = book;
-                isLock2 = false;
+                latch.countDown();
             }
 
             @Override
             public void onError(Throwable throwable) {
-                isLock2 = false;
-                countDownLatch.countDown();
+                latch.countDown();
             }
 
             @Override
             public void onCompleted() {
-                isLock2 = false;
-                countDownLatch.countDown();
+                latch.countDown();
             }
         });
 
@@ -97,16 +93,16 @@ public class BookAuthorClientService {
         }
 
         responseObserver.onCompleted();
-        while (isLock2) {
-            Thread.onSpinWait();
-        }
-//        boolean await= countDownLatch.await(1, TimeUnit.MINUTES);
-//        return await ? resultBook[0] : null;
+
+        val isReach= latch.await(GPRC_TIME_OUT, GPRC_TIME_OUT_UTIL);
+        //time out reached and server did not send any data
+        if (!isReach) throw new GrpcException("Grpc TimeOut Reached",null);
+
         return resultBook[0];
     }
 
-    private volatile boolean isLock3= true ;
-    public List<AuthorBookPair> getAuthorBookPairListByIds(List<Integer> bookIds) {
+    public List<AuthorBookPair> getAuthorBookPairListByIds(List<Integer> bookIds) throws InterruptedException, GrpcException {
+        val latch = new CountDownLatch(1);
         List<AuthorBookPair> resultList = new ArrayList<>();
 
         val serverObserver = asynchronousClient.getBooksWithSameAuthor(
@@ -118,12 +114,12 @@ public class BookAuthorClientService {
 
                     @Override
                     public void onError(Throwable throwable) {
-                        isLock3 = false;
+                        latch.countDown();
                     }
 
                     @Override
                     public void onCompleted() {
-                        isLock3 = false;
+                        latch.countDown();
                     }
                 }
         );
@@ -134,7 +130,9 @@ public class BookAuthorClientService {
         data.forEach(serverObserver::onNext);
         serverObserver.onCompleted();
 
-        while (isLock3) {Thread.onSpinWait();}
+        val isReach= latch.await(GPRC_TIME_OUT, GPRC_TIME_OUT_UTIL);
+        //time out reached and server did not send any data
+        if (!isReach) throw new GrpcException("Grpc TimeOut Reached",null);
 
         return resultList;
     }

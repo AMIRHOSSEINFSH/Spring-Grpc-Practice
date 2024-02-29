@@ -17,7 +17,7 @@ public class GrpcClientApplication {
         var ctx = SpringApplication.run(GrpcClientApplication.class, args);
         BookAuthorClientService bookAuthorClientService = ctx.getBean(BookAuthorClientService.class);
 
-        //TODO now you can call function on bookAuthorClientService instance
+        /*//TODO now you can call function on bookAuthorClientService instance
 //        val result = bookAuthorClientService.getBookListOfAuthorByAuthorId(4);
         List<Models.AuthorBookPair> result;
         val bookList = bookAuthorClientService.getLibrarySnapShot()
@@ -33,7 +33,7 @@ public class GrpcClientApplication {
         );
 
         result = bookAuthorClientService.getAuthorBookPairListByIds(requestedIds.stream().toList());
-        System.out.println(result);
+        System.out.println(result);*/
     }
 
 }
